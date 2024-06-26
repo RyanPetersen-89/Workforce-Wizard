@@ -1,146 +1,130 @@
-const { Pool } = require("pg");
+require('dotenv').config(); // load environment variables from .env file
 
+const { Pool } = require('pg'); // import the PostgreSQL pool
+
+// create a new pool instance with connection details
 const pool = new Pool({
-  user: process.env.USER,
-  password: process.env.PASSWORD,
-  host: process.env.HOST,
-  database: process.env.DATABASE,
+  user: process.env.PGUSER,
+  host: process.env.PGHOST,
+  database: process.env.PGDATABASE,
+  password: process.env.PGPASSWORD,
+  port: process.env.PGPORT,
 });
 
-function Query() {}
-
-Query.prototype.seeDepartments = () => {
-  // department table data gotten
-  const output = pool.query("SELECT * FROM department");
-  return output;
+// function to view all departments
+const viewDepartments = async () => {
+  try {
+    const res = await pool.query('SELECT * FROM department'); // run query to get all departments
+    return res.rows; // return results
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
 };
 
-Query.prototype.seeRoles = () => {
-  // role and department tables data gotten
-  const output = pool.query(
-    "SELECT r.id, r.title, r.salary, d.name AS department FROM role r JOIN department d ON r.department_id = d.id"
-  );
-  return output;
+// function to view all roles
+const viewRoles = async () => {
+  try {
+    const res = await pool.query('SELECT r.id, r.title, r.salary, d.name AS department FROM role r JOIN department d ON r.department_id = d.id'); // run query to get all roles
+    return res.rows; 
+  } catch (err) {
+    console.error('Error executing query', err.stack);
+  }
 };
 
-Query.prototype.seeEmployees = () => {
-  // employee data returned
-  const output =
-    pool.query(`SELECT e.id, e.first_name, e.last_name, r.title, r.salary, d.name AS department,
-    employee.first_name||' '||employee.last_name AS manager 
-    FROM employee e LEFT JOIN employee ON e.manager_id=employee.id 
-    JOIN role r ON e.role_id = r.id 
-    JOIN department d ON r.department_id = d.id`);
-  return output;
+// function to view all employees
+const viewEmployees = async () => {
+  try {
+    const res = await pool.query(`
+      SELECT e.id, e.first_name, e.last_name, r.title, r.salary
+      FROM employee e
+      JOIN role r ON e.role_id = r.id
+    `);
+    return res.rows; // return results
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
 };
 
-Query.prototype.seeManagers = async () => {
-  // using employee table manager data is returned
-  const output = pool.query(
-    `SELECT DISTINCT employee.first_name||' '||employee.last_name AS manager FROM employee e LEFT JOIN employee ON e.manager_id=employee.id`
-  );
-  return output;
+// function to view all managers
+const viewManagers = async () => {
+  try {
+    const res = await pool.query(`SELECT DISTINCT m.first_name || ' ' || m.last_name AS manager
+    FROM employee e
+    LEFT JOIN employee m ON e.manager_id = m.id`); // run query to get all distinct managers
+    return res.rows; 
+  } catch (err) {
+    console.error('Error executing query', err.stack); 
+  }
 };
 
-Query.prototype.addDepartment = (departmentName) => {
-  // department table has new department added
-  pool.query(
-    `INSERT INTO department (name) VALUES ($1)`,
-    [departmentName],
-    (err) => {
-      if (err) {
-        console.log(err);
-      }
-      console.log("Added Department!");
+// function to add a new department
+const addDepartment = async (name) => {
+  try {
+    await pool.query('INSERT INTO department (name) VALUES ($1)', [name]); // insert new department
+    console.log(`Added department: ${name}`); // log confirmation
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
+};
+
+// function to add a new role
+const addRole = async (title, salary, departmentName) => {
+  try {
+    const depRes = await pool.query('SELECT id FROM department WHERE name = $1', [departmentName]); // get department ID by name
+    const departmentId = depRes.rows[0].id; // extract department ID
+    await pool.query('INSERT INTO role (title, salary, department_id) VALUES ($1, $2, $3)', [title, salary, departmentId]); // insert a new role
+    console.log(`Added role: ${title}`); // log confirmation
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
+};
+
+// function to add a new employee
+const addEmployee = async (first_name, last_name, roleTitle, managerName) => {
+  try {
+    const roleRes = await pool.query('SELECT id FROM role WHERE title = $1', [roleTitle]); // get role ID by title
+    const roleId = roleRes.rows[0].id; // extract role ID
+
+    let managerId = null;
+    if (managerName) {
+      const managerNames = managerName.split(' '); // split manager name into first and last names
+      const managerRes = await pool.query('SELECT id FROM employee WHERE first_name = $1 AND last_name = $2', [managerNames[0], managerNames[1]]); // get manager ID by name
+      managerId = managerRes.rows[0]?.id || null; // extract manager ID or set to null
     }
-  );
+
+    await pool.query('INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ($1, $2, $3, $4)', [first_name, last_name, roleId, managerId]); // insert new employee
+    console.log(`Added employee: ${first_name} ${last_name}`); // log confirmation
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
 };
 
-Query.prototype.addRole = async (inputData) => {
-  // Extract properties from the inputData object and assign them to variables.
-  const { role, salary, departments } = inputData;
+// function to update an employee's role
+const updateEmployeeRole = async (employeeName, roleTitle, managerName) => {
+  try {
+    const employeeNames = employeeName.split(' '); // split employee name into first and last names
+    const roleRes = await pool.query('SELECT id FROM role WHERE title = $1', [roleTitle]); // get role ID by title
+    const roleId = roleRes.rows[0].id; // extract role ID
 
-  // department id variable gotten with query
-  let depId = await pool.query(
-    "SELECT department.id FROM department WHERE department.name = $1",
-    [departments]
-  );
+    const managerNames = managerName.split(' '); // split manager name into first and last names
+    const managerRes = await pool.query('SELECT id FROM employee WHERE first_name = $1 AND last_name = $2', [managerNames[0], managerNames[1]]); // get manager ID by name
+    const managerId = managerRes.rows[0].id; // extract manager ID
 
-  // table has role data added
-  pool.query(
-    `INSERT INTO role (title, salary, department_id) VALUES ($1, $2, $3)`,
-    [role, salary, depId.rows[0].id],
-    (err) => {
-      if (err) {
-        console.log(err);
-      }
-      console.log("Added role!");
-    }
-  );
+    await pool.query('UPDATE employee SET role_id = $1, manager_id = $2 WHERE first_name = $3 AND last_name = $4', [roleId, managerId, employeeNames[0], employeeNames[1]]); // update employee role and manager
+    console.log(`Updated employee: ${employeeName} with new role: ${roleTitle} and manager: ${managerName}`); // log confirmation
+  } catch (err) {
+    console.error('Error executing query', err.stack); // log errors
+  }
 };
 
-Query.prototype.addEmployee = async (inputData) => {
-  // Extract properties from the inputData object and assign them to individual variables.
-  const { firstName, lastName, role, manager } = inputData;
-
-  // role table id gotten with query
-  let roleId = await pool.query("SELECT r.id FROM role r WHERE r.title = $1", [
-    role,
-  ]);
-
-  // Splits the manager's name into an array containing the first name and last name for database insertion.
-  managerName = manager.split(" ");
-
-  // employee table manager id gotten with query
-  let managerId = await pool.query(
-    "SELECT e.id FROM employee e WHERE e.first_name =$1 AND e.last_name =$2",
-    [managerName[0], managerName[1]]
-  );
-
-  // table has employee specifics added.
-  pool.query(
-    `INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES ($1, $2, $3, $4)`,
-    [firstName, lastName, roleId.rows[0].id, managerId.rows[0].id],
-    (err) => {
-      if (err) {
-        console.log(err);
-      }
-      console.log("Added Employee!");
-    }
-  );
+// export all functions
+module.exports = {
+  viewDepartments,
+  viewRoles,
+  viewEmployees,
+  viewManagers,
+  addDepartment,
+  addRole,
+  addEmployee,
+  updateEmployeeRole,
 };
-
-Query.prototype.changeRole = async (inputData) => {
-  // Extract individual properties from the inputData object.
-  const { employee, roles, manager } = inputData;
-
-  // Split the manager's full name into an array containing the first and last names.
-  managerName = manager.split(" ");
-
-  // employee table manager id gotten from query.
-  let managerId = await pool.query(
-    "SELECT e.id FROM employee e WHERE e.first_name =$1 AND e.last_name =$2",
-    [managerName[0], managerName[1]]
-  );
-
-  // role table id gotten from query.
-  let roleId = await pool.query("SELECT r.id FROM role r WHERE r.title =$1", [
-    roles,
-  ]);
-  // Split the manager's full name into an array containing the first and last names.
-  employeeName = employee.split(" ");
-
-  // Modify the role_id and manager_id columns in the employee table for the specified employee.
-  pool.query(
-    `UPDATE employee SET role_id=$1, manager_id=$2 WHERE first_name=$3 AND last_name=$4`,
-    [roleId.rows[0].id, managerId.rows[0].id, employeeName[0], employeeName[1]],
-    (err) => {
-      if (err) {
-        console.log(err);
-      }
-      console.log("Updated specifics of Employee!");
-    }
-  );
-};
-
-module.exports = Query;

@@ -11,4 +11,4 @@ INSERT INTO employee (first_name, last_name, role_id, manager_id) VALUES
 ('Gary', 'Johnson', 5, 7),
 ('Scott', 'Michael', 5, NULL), --Highest-level Supervisor other supervisors report to Wayne
 ('Gerald', 'White', 1, 5),
-('Maurice', 'Bridgerton', 4, 1); 
+('Maurice', 'Bridgerton', 4, 1);
