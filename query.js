@@ -35,13 +35,16 @@ const viewRoles = async () => {
 const viewEmployees = async () => {
   try {
     const res = await pool.query(`
-      SELECT e.id, e.first_name, e.last_name, r.title, r.salary
+      SELECT e.id, e.first_name, e.last_name, r.title AS role, r.salary, d.name AS department,
+             COALESCE(m.first_name || ' ' || m.last_name, 'No manager') AS manager
       FROM employee e
-      JOIN role r ON e.role_id = r.id
+      LEFT JOIN role r ON e.role_id = r.id
+      LEFT JOIN department d ON r.department_id = d.id
+      LEFT JOIN employee m ON e.manager_id = m.id
     `);
     return res.rows; // return results
   } catch (err) {
-    console.error('Error executing query', err.stack); // log errors
+    console.error("Error executing query", err.stack); // log errors
   }
 };
 
